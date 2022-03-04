@@ -103,11 +103,11 @@ script
       "}\n" +
       "G.str['arg'] = lua_newtable();\n" +
       "G.str['_G'] = G;\n" +
-      "G.str['module'] = function (name) {\n" +
-      "  lua_createmodule(G, name, slice(arguments, 1));\n" +
+      "G.str['module'] = async function (name) {\n" +
+      "  (await lua_createmodule(G, name, slice(arguments, 1)));\n" +
       "};\n" +
-      "G.str['require'] = function (name) {\n" +
-      "  lua_require(G, name);\n" +
+      "G.str['require'] = async function (name) {\n" +
+      "  (await lua_require(G, name));\n" +
       "};\n" +
       "G.str['package'].str['seeall'] = function (module) {\n" +
       "  if (!module.metatable) {\n" +
@@ -174,7 +174,7 @@ loopblock
     // with how variables behave due to the difference in scoping in JS and Lua
     // by wrapping a loop block in a function call, we resolve these problems, but it
     // is only necessary for situations where functions are declared inside of a loop
-    
+
     if (functionBlockAdded) {
       $$ = {
         block: $3.varfix_form || $3.simple_form,
@@ -214,7 +214,7 @@ chunk
 prefixexp
   : var {
     if ($1.access) {
-      $$ = {single: "lua_tableget(" + $1.prefixexp + ", " + $1.access + ")", single_tableget: $1};
+      $$ = {single: "await lua_tableget(" + $1.prefixexp + ", " + $1.access + ")", single_tableget: $1};
     } else {
       $$ = {single: $1.prefixexp};
     }
@@ -244,13 +244,13 @@ stat
       // avoid tmp entirely for certain situations
       if ($3.exps.length == 1) {
         if ($1[0].access) {
-          tmp = "lua_tableset(" + $1[0].prefixexp + ", " + $1[0].access + ", " + $3.exps[0] + ");";
+          tmp = "await lua_tableset(" + $1[0].prefixexp + ", " + $1[0].access + ", " + $3.exps[0] + ");";
         } else {
           tmp = $1[0].prefixexp + " = " + $3.exps[0] + ";";
         }
       } else {
         if ($1[0].access) {
-          tmp = "lua_tableset(" + $1[0].prefixexp + ", " + $1[0].access + ", " + getTempDecl($3) + "[0]);";
+          tmp = "await lua_tableset(" + $1[0].prefixexp + ", " + $1[0].access + ", " + getTempDecl($3) + "[0]);";
         } else {
           tmp = $1[0].prefixexp + " = " + getTempDecl($3) + "[0];";
         }
@@ -259,7 +259,7 @@ stat
       tmp = "tmp = " + getTempDecl($3) + "; ";
       for (var i = 0; i < $1.length; i++) {
         if ($1[i].access) {
-          tmp += "lua_tableset(" + $1[i].prefixexp + ", " + $1[i].access + ", tmp[" + i + "]); ";
+          tmp += "await lua_tableset(" + $1[i].prefixexp + ", " + $1[i].access + ", tmp[" + i + "]); ";
         } else {
           tmp += $1[i].prefixexp + " = tmp[" + i + "]; ";
         }
@@ -307,7 +307,7 @@ stat
     if ($9.use_function_block) {
       $$ = {simple_form: "var var_" + $2 + " = " + autoAssertFloat($5) + ", " +
         "stop_" + $2 + " = " + autoAssertFloat($7) + ";\n" +
-        "for (; var_" + $2 + " <= stop_" + $2 + "; var_" + $2 + "++) (function() {\n" +
+        "for (; var_" + $2 + " <= stop_" + $2 + "; var_" + $2 + "++) (async function() {\n" +
         "  var " + $3[0] + " = var_" + $2 + ";\n" +
         $9.block + "\n" +
         "})();"};
@@ -330,7 +330,7 @@ stat
       "step_" + $2 + " = " + autoAssertFloat($9) + ";\n" +
       "for (; step_" + $2 + " > 0 ? var_" + $2 + " <= stop_" + $2 + " : var_" + $2 + " >= stop_" + $2 + "; var_" + $2 + " += step_" + $2 + ") ";
     if ($11.use_function_block) {
-      tmp += "(function () {\n";
+      tmp += "(async function () {\n";
     } else {
       tmp += "{\n";
     }
@@ -353,14 +353,14 @@ stat
     if ($3.length == 1 && !$7.use_function_block) {
       // simple form of this loop that works in certain situations
       tmp += "tmp = null;\n" +
-        "while ((var_" + $2 + " = lua_call(f_" + $2 + ", [s_" + $2 + ", var_" + $2 + "])[0]) != null) {\n" +
+        "while ((var_" + $2 + " = (await lua_call(f_" + $2 + ", [s_" + $2 + ", var_" + $2 + "]))[0]) != null) {\n" +
           "  var " + $3[0] + " = var_" + $2 + ";\n" +
           $7.block +
           "\n}";
     } else {
-      tmp += "while ((tmp = lua_call(f_" + $2 + ", [s_" + $2 + ", var_" + $2 + "]))[0] != null) ";
+      tmp += "while ((tmp = (await lua_call(f_" + $2 + ", [s_" + $2 + ", var_" + $2 + "])))[0] != null) ";
       if ($7.use_function_block) {
-        tmp += "(function () {\n";
+        tmp += "(async function () {\n";
       } else {
         tmp += "{\n";
       }
@@ -385,9 +385,9 @@ stat
     var tmp = getLocal($2[0], "G.str['" + $2[0] + "']");
     if ($2.length > 1) {
       for (var i = 1; i < $2.length - 1; i++) {
-        tmp = "lua_tableget(" + tmp + ", '" + $2[i] + "')";
+        tmp = "await lua_tableget(" + tmp + ", '" + $2[i] + "')";
       }
-      $$ = {simple_form: "lua_tableset(" + tmp + ", '" + $2[i] + "', " + $3 + ")"};
+      $$ = {simple_form: "await lua_tableset(" + tmp + ", '" + $2[i] + "', " + $3 + ")"};
     } else {
       $$ = {simple_form: tmp + " = " + $3};
     }
@@ -395,9 +395,9 @@ stat
   | FUNCTION funcname ":" NAME mfuncbody {
     var tmp = getLocal($2[0], "G.str['" + $2[0] + "']");
     for (var i = 1; i < $2.length; i++) {
-      tmp = "lua_tableget(" + tmp + ", '" + $2[i] + "')";
+      tmp = "await lua_tableget(" + tmp + ", '" + $2[i] + "')";
     }
-    $$ = {simple_form: "lua_tableset(" + tmp + ", '" + $4 + "', " + $5 + ")"};
+    $$ = {simple_form: "await lua_tableset(" + tmp + ", '" + $4 + "', " + $5 + ")"};
   }
   | LOCAL FUNCTION name_setlocals funcbody {
     $$ = {simple_form: "var " + $3 + " = " + $4 + ";"};
@@ -479,7 +479,7 @@ namelist
   ;
 
 name_setlocals
-  : NAME { $$ = setLocal($1); } 
+  : NAME { $$ = setLocal($1); }
   ;
 
 arglist
@@ -507,95 +507,95 @@ exp
     if ($1.is_number && $3.is_number) {
       $$ = {single: '(' + $1.single + ' + ' + $3.single + ')', is_number: true};
     } else {
-      $$ = {single: 'lua_add(' + $1.single + ', ' + $3.single + ')'};
+      $$ = {single: 'await lua_add(' + $1.single + ', ' + $3.single + ')'};
     }
   }
   | exp "-" exp {
     if ($1.is_number && $3.is_number) {
       $$ = {single: '(' + $1.single + ' - ' + $3.single + ')', is_number: true};
     } else {
-      $$ = {single: 'lua_subtract(' + $1.single + ', ' + $3.single + ')'};
+      $$ = {single: 'await lua_subtract(' + $1.single + ', ' + $3.single + ')'};
     }
   }
   | exp "*" exp {
     if ($1.is_number && $3.is_number) {
       $$ = {single: '(' + $1.single + ' * ' + $3.single + ')', is_number: true};
     } else {
-      $$ = {single: 'lua_multiply(' + $1.single + ', ' + $3.single + ')'};
+      $$ = {single: 'await lua_multiply(' + $1.single + ', ' + $3.single + ')'};
     }
   }
   | exp "/" exp {
     if ($1.is_number && $3.is_number) {
       $$ = {single: '(' + $1.single + ' / ' + $3.single + ')', is_number: true};
     } else {
-      $$ = {single: 'lua_divide(' + $1.single + ', ' + $3.single + ')'};
+      $$ = {single: 'await lua_divide(' + $1.single + ', ' + $3.single + ')'};
     }
   }
   | exp "^" exp {
     if ($1.is_number && $3.is_number) {
       $$ = {single: 'Math.pow(' + $1.single + ', ' + $3.single + ')', is_number: true};
     } else {
-      $$ = {single: 'lua_power(' + $1.single + ', ' + $3.single + ')'};
+      $$ = {single: 'await lua_power(' + $1.single + ', ' + $3.single + ')'};
     }
   }
-  | exp "%" exp { $$ = {single: 'lua_mod(' + $1.single + ', ' + $3.single + ')'}; }
-  | exp ".." exp { $$ = {single: 'lua_concat(' + $1.single + ', ' + $3.single + ')'}; }
+  | exp "%" exp { $$ = {single: 'await lua_mod(' + $1.single + ', ' + $3.single + ')'}; }
+  | exp ".." exp { $$ = {single: 'await lua_concat(' + $1.single + ', ' + $3.single + ')'}; }
   | exp "<" exp {
     $$ = {
-      single: 'lua_lt(' + $1.single + ', ' + $3.single + ')',
-      simple_form: 'lua_lt(' + $1.single + ', ' + $3.single + ')'
+      single: 'await lua_lt(' + $1.single + ', ' + $3.single + ')',
+      simple_form: 'await lua_lt(' + $1.single + ', ' + $3.single + ')'
     };
   }
   | exp ">" exp {
     $$ = {
-      single: 'lua_lt(' + $3.single + ', ' + $1.single + ')',
-      simple_form: 'lua_lt(' + $3.single + ', ' + $1.single + ')'
+      single: 'await lua_lt(' + $3.single + ', ' + $1.single + ')',
+      simple_form: 'await lua_lt(' + $3.single + ', ' + $1.single + ')'
     };
   }
   | exp "<=" exp {
     $$ = {
-      single: 'lua_lte(' + $1.single + ', ' + $3.single + ')',
-      simple_form: 'lua_lte(' + $1.single + ', ' + $3.single + ')'
+      single: 'await lua_lte(' + $1.single + ', ' + $3.single + ')',
+      simple_form: 'await lua_lte(' + $1.single + ', ' + $3.single + ')'
     };
   }
   | exp ">=" exp {
     $$ = {
-      single: 'lua_lte(' + $3.single + ', ' + $1.single + ')',
-      simple_form: 'lua_lte(' + $3.single + ', ' + $1.single + ')'
+      single: 'await lua_lte(' + $3.single + ', ' + $1.single + ')',
+      simple_form: 'await lua_lte(' + $3.single + ', ' + $1.single + ')'
     };
   }
   | exp "==" exp {
     $$ = {
-      single: 'lua_eq(' + $1.single + ', ' + $3.single + ')',
-      simple_form: 'lua_eq(' + $1.single + ', ' + $3.single + ')'
+      single: 'await lua_eq(' + $1.single + ', ' + $3.single + ')',
+      simple_form: 'await lua_eq(' + $1.single + ', ' + $3.single + ')'
     };
   }
   | exp "~=" exp {
     $$ = {
-      single: '!lua_eq(' + $1.single + ', ' + $3.single + ')',
-      simple_form: '!lua_eq(' + $1.single + ', ' + $3.single + ')'
+      single: '!await lua_eq(' + $1.single + ', ' + $3.single + ')',
+      simple_form: '!await lua_eq(' + $1.single + ', ' + $3.single + ')'
     };
   }
   | exp AND exp {
     $$ = {
-      single: 'lua_and(' + $1.single + ', function () {return ' + $3.single + ';})',
+      single: 'lua_and(' + $1.single + ', async function () {return ' + $3.single + ';})',
       simple_form: '(' + getIfExp($1) + ' && ' + getIfExp($3) + ')'
     };
   }
   | exp OR exp {
     $$ = {
-      single: 'lua_or(' + $1.single + ', function () {return ' + $3.single + ';})',
+      single: 'lua_or(' + $1.single + ', async function () {return ' + $3.single + ';})',
       simple_form: '(' + getIfExp($1) + ' || ' + getIfExp($3) + ')'
     };
   }
-  | "-" exp { $$ = {single: $2.is_number ? ('-' + $2.single) : ('lua_unm(' + $2.single + ')'), is_number: $2.is_number}; }
+  | "-" exp { $$ = {single: $2.is_number ? ('-' + $2.single) : ('await lua_unm(' + $2.single + ')'), is_number: $2.is_number}; }
   | NOT exp {
     $$ = {
       single: 'lua_not(' + $2.single + ')',
       simple_form: 'lua_not(' + $2.single + ')'
     };
   }
-  | "#" exp { $$ = {single: 'lua_len(' + $2.single + ')'}; }
+  | "#" exp { $$ = {single: 'await lua_len(' + $2.single + ')'}; }
   | "..." { $$ = {single: 'varargs[0]', endmulti: 'varargs'}; }
   ;
 
@@ -639,12 +639,12 @@ var
 functioncall
   : prefixexp args {
     if ($1.single_tableget) {
-      $$ = "lua_tablegetcall(" + $1.single_tableget.prefixexp + ", " + $1.single_tableget.access + ", " + getTempDecl($2) + ")";
+      $$ = "(await lua_tablegetcall(" + $1.single_tableget.prefixexp + ", " + $1.single_tableget.access + ", " + getTempDecl($2) + "))";
     } else {
-      $$ = "lua_call(" + $1.single + ", " + getTempDecl($2) + ")";
+      $$ = "(await lua_call(" + $1.single + ", " + getTempDecl($2) + "))";
     }
-  } 
-  | prefixexp ":" NAME args { $$ = "lua_mcall(" + $1.single + ", '" + $3 + "', " + getTempDecl($4) + ")"; }
+  }
+  | prefixexp ":" NAME args { $$ = "await lua_mcall(" + $1.single + ", '" + $3 + "', " + getTempDecl($4) + ")"; }
   ;
 
 args
@@ -731,7 +731,7 @@ function longStringToString(str) {
 }
 
 function createFunction(args, body, hasVarargs) {
-  var result = "(function (" + args.join(", ") + ") {\n" +
+  var result = "(async function (" + args.join(", ") + ") {\n" +
     "  var tmp;\n";
   if (hasVarargs) {
     result += "  var varargs = slice(arguments, " + args.length + ");\n";

@@ -23,18 +23,27 @@ var lua_print = function () {
   return [];
 };
 
-function lua_load(chunk, chunkname) {
+async function lua_load(chunk, chunkname, debug) {
   if (!lua_parser) {
     throw new Error("Lua parser not available, perhaps you're not using the lua+parser.js version of the library?");
   }
 
   var fn;
-  eval(
-    "fn = function " + (chunkname || "load") + "() {\n" +
-    "return (function () {\n" +
+
+  // debug print script
+  var fullScript = "fn = async function " + (chunkname || "load") + "() {\n" +
+    "return (await (async function () {\n" +
     lua_parser.parse(chunk) + "\n" +
-    "})()[0];\n" +
-    "};");
+    "})())[0];\n" +
+    "};";
+  if (debug != undefined) {
+    console.log(fullScript);
+  }
+  try {
+    eval(fullScript);
+  } catch(e) {
+    console.log(fullScript);
+    throw(e);
+  }
   return fn;
 }
-

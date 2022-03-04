@@ -127,7 +127,7 @@ function lua_newtable(autoIndexList) {
               bFound = true;
               // modify/overwrite existing entry
               // (could happen that same key is used twice in autoIndexList)
-              result.objs[i][1] = value; 
+              result.objs[i][1] = value;
             }
             break;
           }
@@ -160,7 +160,7 @@ function lua_newtable2(str) {
   }
   return {str: str_copy, uints: {}, floats: {}, bool: {}, objs: {}};
 }
-function lua_len(op) {
+async function lua_len(op) {
   if (typeof op == "string") {
     return op.length;
   } else if (typeof op == "object" && op != null) {
@@ -179,15 +179,30 @@ function lua_len(op) {
   } else {
     var h = op.metatable && op.metatable.str["__len"];
     if (h) {
-      return lua_rawcall(h, [op])[0];
+      var result = await lua_rawcall(h, [op]);
+      return result[0];
     } else {
       throw new Error("Length of <" + op + "> not supported");
     }
   }
 }
-function lua_rawcall(func, args) {
+async function lua_rawcall(func, args) {
   try {
-    return func.apply(null, args);
+    // check if async function
+    if (func.constructor.name == 'AsyncFunction') {
+      // console.log("async function passed, using await");
+      var result = await func.apply(null, args);
+      // console.log("result inside lua_rawcall:");
+      // console.log(result);
+      return result;
+    } else {
+      // console.log("normal function passed");
+      var result = func.apply(null, args);
+      // console.log("result inside lua_rawcall:");
+      // console.log(result);
+      return result;
+    }
+
   } catch (e) {
     if (e.constructor == ReturnValues) {
       return e.vars;
@@ -200,45 +215,45 @@ function lua_rawcall(func, args) {
 
 // could be replaced by lua_call(lua_tableget(table, key), args)
 // but this gives better error messages
-function lua_tablegetcall(table, key, args) {
-  var func = lua_tableget(table, key);
+async function lua_tablegetcall(table, key, args) {
+  var func = await lua_tableget(table, key);
   if (typeof func == "function") {
-    return lua_rawcall(func, args);
+    return await lua_rawcall(func, args);
   } else {
     if (func == null) {
       throw new Error("attempt to call field '" + key + "' (a nil value)");
     }
     var h = func.metatable && func.metatable.str["__call"];
     if (h != null) {
-      return lua_rawcall(h, [func].concat(args));
+      return await lua_rawcall(h, [func].concat(args));
     } else {
       throw new Error("Could not call " + func + " as function");
     }
   }
 }
-function lua_call(func, args) {
+async function lua_call(func, args) {
   if (typeof func == "function") {
-    return lua_rawcall(func, args);
+    return await lua_rawcall(func, args);
   } else {
     if (func == null) {
-      throw new Error("attempt to call function (a nil value)");
+      throw new Error("lua_call: attempt to call function null");
     }
     var h = func.metatable && func.metatable.str["__call"];
     if (h != null) {
-      return lua_rawcall(h, [func].concat(args));
+      return await lua_rawcall(h, [func].concat(args));
     } else {
       throw new Error("Could not call " + func + " as function");
     }
   }
 }
-function lua_mcall(obj, methodname, args) {
-  var func = lua_tableget(obj, methodname);
+async function lua_mcall(obj, methodname, args) {
+  var func = await lua_tableget(obj, methodname);
   if (func == null) {
     throw new Error("attempt to call method '" + methodname + "' (a nil value)");
   }
-  return lua_call(func, [obj].concat(args));
+  return await lua_call(func, [obj].concat(args));
 }
-function lua_eq(op1, op2) {
+async function lua_eq(op1, op2) {
   if (typeof op1 != typeof op2) {
     if (op1 == null && op2 == null) {
       return true;
@@ -253,12 +268,13 @@ function lua_eq(op1, op2) {
   }
   var h = op1.metatable && op1.metatable.str["__eq"];
   if (h && h == (op2.metatable && op2.metatable.str["__eq"])) {
-    return lua_true(lua_rawcall(h, [op1, op2])[0]);
+    var result = await lua_rawcall(h, [op1, op2]);
+    return lua_true(result[0]);
   } else {
     return false;
   }
 }
-function lua_lt(op1, op2) {
+async function lua_lt(op1, op2) {
   if (typeof op1 == "number" && typeof op2 == "number") {
     return op1 < op2;
   } else if (typeof op1 == "string" && typeof op2 == "string") {
@@ -267,13 +283,14 @@ function lua_lt(op1, op2) {
   } else {
     var h = op1.metatable && op1.metatable.str["__lt"];
     if (h && h == (op2.metatable && op2.metatable.str["__lt"])) {
-      return lua_true(lua_rawcall(h, [op1, op2])[0]);
+      var result = await lua_rawcall(h, [op1, op2]);
+      return lua_true(result[0]);
     } else {
       throw new Error("Unable to compare " + op1 + " and " + op2);
     }
   }
 }
-function lua_lte(op1, op2) {
+async function lua_lte(op1, op2) {
   if (typeof op1 == "number" && typeof op2 == "number") {
     return op1 <= op2;
   } else if (typeof op1 == "string" && typeof op2 == "string") {
@@ -282,36 +299,40 @@ function lua_lte(op1, op2) {
   } else {
     var h = op1.metatable && op1.metatable.str["__le"];
     if (h && h == (op2.metatable && op2.metatable.str["__le"])) {
-      return lua_true(lua_rawcall(h, [op1, op2])[0]);
+      var result = await lua_rawcall(h, [op1, op2]);
+      return lua_true(result[0]);
     } else {
       var h = op1.metatable && op1.metatable.str["__lt"];
       if (h && h == (op2.metatable && op2.metatable.str["__lt"])) {
-        return lua_not(lua_rawcall(h, [op2, op1])[0]);
+        var result = await lua_rawcall(h, [op2, op1]);
+        return lua_not(result[0]);
       } else {
         throw new Error("Unable to compare " + op1 + " and " + op2);
       }
     }
   }
 }
-function lua_unm(op) {
+async function lua_unm(op) {
   var o = parseFloat(op);
   if (!isNaN(o)) {
     return -o;
   } else {
     var h = op.metatable && op.metatable.str["__unm"];
     if (h) {
-      return lua_rawcall(h, [op])[0];
+      var result = await lua_rawcall(h, [op]);
+      return result[0];
     } else {
       throw new Error("Inverting <" + op + "> not supported");
     }
   }
 }
-function lua_add(op1, op2) {
+async function lua_add(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
     var h = (op1.metatable && op1.metatable.str["__add"]) || (op2.metatable && op2.metatable.str["__add"]);
     if (h) {
-      return lua_rawcall(h, [op1, op2])[0];
+      var result = await lua_rawcall(h, [op1, op2]);
+      return result[0];
     } else {
       throw new Error("Adding <" + op1 + "> and <" + op2 + "> not supported");
     }
@@ -319,12 +340,13 @@ function lua_add(op1, op2) {
     return o1 + o2;
   }
 }
-function lua_subtract(op1, op2) {
+async function lua_subtract(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
     var h = (op1.metatable && op1.metatable.str["__sub"]) || (op2.metatable && op2.metatable.str["__sub"]);
     if (h) {
-      return lua_rawcall(h, [op1, op2])[0];
+      var result = await lua_rawcall(h, [op1, op2]);
+      return result[0];
     } else {
       throw new Error("Subtracting <" + op1 + "> and <" + op2 + "> not supported");
     }
@@ -332,12 +354,13 @@ function lua_subtract(op1, op2) {
     return o1 - o2;
   }
 }
-function lua_divide(op1, op2) {
+async function lua_divide(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
     var h = (op1.metatable && op1.metatable.str["__div"]) || (op2.metatable && op2.metatable.str["__div"]);
     if (h) {
-      return lua_rawcall(h, [op1, op2])[0];
+      var result = await lua_rawcall(h, [op1, op2]);
+      return result[0];
     } else {
       throw new Error("Dividing <" + op1 + "> and <" + op2 + "> not supported");
     }
@@ -345,12 +368,13 @@ function lua_divide(op1, op2) {
     return o1 / o2;
   }
 }
-function lua_multiply(op1, op2) {
+async function lua_multiply(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
     var h = (op1.metatable && op1.metatable.str["__mul"]) || (op2.metatable && op2.metatable.str["__mul"]);
     if (h) {
-      return lua_rawcall(h, [op1, op2])[0];
+      var result = await lua_rawcall(h, [op1, op2]);
+      return result[0];
     } else {
       throw new Error("Multiplying <" + op1 + "> and <" + op2 + "> not supported");
     }
@@ -358,12 +382,13 @@ function lua_multiply(op1, op2) {
     return o1 * o2;
   }
 }
-function lua_power(op1, op2) {
+async function lua_power(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
     var h = (op1.metatable && op1.metatable.str["__pow"]) || (op2.metatable && op2.metatable.str["__pow"]);
     if (h) {
-      return lua_rawcall(h, [op1, op2])[0];
+      var result = await lua_rawcall(h, [op1, op2]);
+      return result[0];
     } else {
       throw new Error("<" + op1 + "> to the power of <" + op2 + "> not supported");
     }
@@ -371,12 +396,13 @@ function lua_power(op1, op2) {
     return Math.pow(o1, o2);
   }
 }
-function lua_mod(op1, op2) {
+async function lua_mod(op1, op2) {
   var o1 = parseFloat(op1), o2 = parseFloat(op2);
   if (isNaN(o1) || isNaN(o2)) {
     var h = (op1.metatable && op1.metatable.str["__mod"]) || (op2.metatable && op2.metatable.str["__mod"]);
     if (h) {
-      return lua_rawcall(h, [op1, op2])[0];
+      var result = await lua_rawcall(h, [op1, op2]);
+      return result[0];
     } else {
       throw new Error("Modulo <" + op1 + "> and <" + op2 + "> not supported");
     }
@@ -489,7 +515,7 @@ function lua_rawset(table, key, value) {
       throw new Error("Unsupported key for table: " + (typeof key));
   }
 }
-function lua_tableget(table, key) {
+async function lua_tableget(table, key) {
   if (table == null) {
     throw new Error("attempt to index field '" + key + "' in a nil value");
   }
@@ -509,12 +535,13 @@ function lua_tableget(table, key) {
     }
   }
   if (typeof h == "function") {
-    return lua_rawcall(h, [table, key])[0];
+    var result = await lua_rawcall(h, [table, key]);
+    return result[0];
   } else {
-    return lua_tableget(h, key);
+    return await lua_tableget(h, key);
   }
 }
-function lua_tableset(table, key, value) {
+async function lua_tableset(table, key, value) {
   if (table == null) {
     throw new Error("attempt to set field '" + key + "' in a nil value");
   }
@@ -536,12 +563,12 @@ function lua_tableset(table, key, value) {
     }
   }
   if (typeof h == "function") {
-    lua_rawcall(h, [table, key, value]);
+    await lua_rawcall(h, [table, key, value]);
   } else {
-    lua_tableset(h, key, value);
+    await lua_tableset(h, key, value);
   }
 }
-function lua_concat(op1, op2) {
+async function lua_concat(op1, op2) {
   if (typeof op1 == "number" && typeof op2 == "number") {
     throw new Error("number concat not supported yet");
   } else if ((typeof op1 == "string" || typeof op1 == "number") && (typeof op2 == "string" || typeof op2 == "number")) {
@@ -549,7 +576,8 @@ function lua_concat(op1, op2) {
   } else {
     var h = (op1.metatable && op1.metatable.str["__concat"]) || (op2.metatable && op2.metatable.str["__concat"]);
     if (h) {
-      return lua_rawcall(h, [op1, op2])[0];
+      var result = await lua_rawcall(h, [op1, op2]);
+      return result[0];
     } else {
       throw new Error("Unable to concat " + op1 + " and " + op2);
     }
@@ -727,13 +755,13 @@ var lua_core = {
       return [parseInt(e, base)];
     }
   },
-  "tostring": function (e) {
+  "tostring": async function (e) {
     if (e == null) {
       return ["nil"];
     }
     var h = e.metatable && e.metatable.str["__tostring"];
     if (h) {
-      return lua_rawcall(h, [e]);
+      return await lua_rawcall(h, [e]);
     } else {
       switch (typeof e) {
         case "number":
@@ -998,38 +1026,38 @@ lua_libs["os"] = {
 
 // package
 var lua_packages = lua_newtable();
-function lua_createmodule(G, name, options) {
-  var t = lua_tableget(lua_packages, name) || lua_tableget(G, name) || lua_newtable();
-  lua_tableset(G, name, t);
-  lua_tableset(lua_packages, name, t);
-  lua_tableset(t, "_NAME", name);
-  lua_tableset(t, "_M", t);
-  lua_tableset(t, "_PACKAGE", name.split(".").slice(0, -1).join("."));
+async function lua_createmodule(G, name, options) {
+  var t = await lua_tableget(lua_packages, name) || await lua_tableget(G, name) || lua_newtable();
+  await lua_tableset(G, name, t);
+  await lua_tableset(lua_packages, name, t);
+  await lua_tableset(t, "_NAME", name);
+  await lua_tableset(t, "_M", t);
+  await lua_tableset(t, "_PACKAGE", name.split(".").slice(0, -1).join("."));
 
   for (var i = 0; i < options.length; i++) {
-    lua_call(options[i], [t]);
+    await lua_call(options[i], [t]);
   }
   return t;
 }
-function lua_module(name) {
-  var t = lua_tableget(lua_packages, name);
+async function lua_module(name) {
+  var t = await lua_tableget(lua_packages, name);
   if (t == null) {
     throw new Error("Module " + name + " not found. Module must be loaded before use.");
   }
   return t;
 }
-function lua_require(G, name) {
-  var t = lua_module(name);
+async function lua_require(G, name) {
+  var t = await lua_module(name);
   var pkg = G;
   var names = name.split(".");
   for (var i = 0; i < names.length - 1; i++) {
-    if (!lua_tableget(pkg, names[i])) {
+    if (!await lua_tableget(pkg, names[i])) {
       var newPkg = lua_newtable();
-      lua_tableset(pkg, names[i], newPkg);
+      await lua_tableset(pkg, names[i], newPkg);
       pkg = newPkg;
     }
   }
-  lua_tableset(pkg, names[names.length - 1], t);
+  await lua_tableset(pkg, names[names.length - 1], t);
   return t;
 }
 lua_libs["package"] = {
@@ -1194,15 +1222,16 @@ lua_libs["table"] = {
   },
   "sort": function (table, comp) {
     ensure_arraymode(table)
-    if (comp) {
-      table.uints.sort(function (a, b) {
-        return comp(a, b)[0] ? -1 : 1;
-      });
-    } else {
-      table.uints.sort(function (a, b) {
-        return lua_lt(a, b) ? -1 : 1;
-      });
-    }
+    table.uints.sort();
+    // if (comp) {
+    //   table.uints.sort(function (a, b) {
+    //     return comp(a, b)[0] ? -1 : 1;
+    //   });
+    // } else {
+    //   table.uints.sort(async function (a, b) {
+    //     return (await lua_lt(a, b)) ? -1 : 1;
+    //   });
+    // }
     return [];
   }
 };
@@ -1278,5 +1307,22 @@ lua_libs["bit"] = {
     x = ((x >> 8) & 0x00FF00FF) | ((x & 0x00FF00FF) << 8);
     x = (x >> 16) | (x << 16);
     return [x];
+  }
+};
+
+
+// array library
+lua_libs["array"] = {
+  "new": function(length) {
+    var newTable = lua_newtable();
+    ensure_arraymode(newTable);
+    for (var i=0; i<length; i++) {
+      newTable["uints"].push(null);
+    }
+    // console.log(newTable);
+    return [newTable];
+  },
+  "get": function(array, index) {
+    return [array["uints"][index-1]]; // lua counts from 1
   }
 };
