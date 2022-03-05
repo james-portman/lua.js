@@ -15,11 +15,14 @@ node_modules/jison:
 	npm install jison
 
 closurecompiler/compiler.jar:
-	wget https://dl.google.com/closure-compiler/compiler-latest.zip
+	# wget https://dl.google.com/closure-compiler/compiler-latest.zip
+	# moved to:
+	# https://github.com/google/closure-compiler/wiki/Binary-Downloads
+	wget https://dl.google.com/closure-compiler/compiler-20200719.zip
 	rm -rf closurecompiler
 	mkdir closurecompiler
-	unzip -p compiler-latest.zip '*.jar' > $(CLOSURE_COMPILER)
-	rm -f compiler-latest.zip
+	unzip -p compiler-*.zip '*.jar' > $(CLOSURE_COMPILER)
+	# rm -f compiler-*.zip
 
 lua2js: src/lua2js_start src/lua_parser.js src/lua2js_end
 	cat $^ > $@
