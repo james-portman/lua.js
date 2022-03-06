@@ -54,6 +54,6 @@ async function lua_parse_only(chunk, chunkname) {
   }
   var fullScript = "var lua_script = (async function () {\n" +
     lua_parser.parse(chunk) + "\n" +
-    "})()[0];";
+    "});";
   return fullScript;
 }
