@@ -47,3 +47,13 @@ async function lua_load(chunk, chunkname, debug) {
   }
   return fn;
 }
+
+async function lua_parse_only(chunk, chunkname) {
+  if (!lua_parser) {
+    throw new Error("Lua parser not available, perhaps you're not using the lua+parser.js version of the library?");
+  }
+  var fullScript = "var lua_script = (async function () {\n" +
+    lua_parser.parse(chunk) + "\n" +
+    "});";
+  return fullScript;
+}
