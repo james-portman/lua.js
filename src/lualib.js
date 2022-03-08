@@ -286,7 +286,7 @@ async function lua_lt(op1, op2) {
       var result = await lua_rawcall(h, [op1, op2]);
       return lua_true(result[0]);
     } else {
-      throw new Error("Unable to compare " + op1 + " and " + op2);
+      throw new Error("Unable to compare " + op1 + " (" + typeof(op1) + ") and " + op2 + " (" + typeof(op2) + ")");
     }
   }
 }
